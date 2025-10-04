@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Wordle Español — 6 letras</title>
+  <style>
+    :root{
+      --bg:#0f1724;
+      --card:#0b1220;
+      --cell:#111827;
+      --text:#e6eef6;
+      --muted:#9aa6b2;
+      --green:#16a34a;
+      --yellow:#f59e0b;
+      --gray:#6b7280;
+      --accent:#2563eb;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071029 0%, #081028 100%);color:var(--text)}
+    .wrap{max-width:940px;margin:32px auto;padding:24px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;box-shadow:0 6px 30px rgba(2,6,23,0.6)}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    .subtitle{color:var(--muted);font-size:13px}
+
+    .board{display:grid;grid-template-rows:repeat(6,1fr);gap:8px;margin:14px 0}
+    .row{display:grid;grid-template-columns:repeat(6,64px);gap:8px}
+    .cell{width:64px;height:64px;border-radius:8px;background:var(--cell);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:24px;color:var(--text);text-transform:uppercase;outline:0;border:2px solid transparent}
+    .cell input{width:100%;height:100%;text-align:center;background:transparent;border:0;color:inherit;font-weight:700;font-size:24px;text-transform:uppercase}
+    .cell.focused{box-shadow:0 0 0 3px rgba(37,99,235,0.12);border-color:var(--accent)}
+
+    .cell.correct{background:var(--green);border-color:transparent;color:white}
+    .cell.present{background:var(--yellow);border-color:transparent;color:black}
+    .cell.absent{background:var(--gray);border-color:transparent;color:white}
+
+    .controls{display:flex;gap:12px;align-items:center;margin-top:12px}
+    button.btn{background:var(--accent);color:white;padding:8px 12px;border-radius:8px;border:0;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+
+    .keyboard{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+    .krow{display:flex;gap:6px;justify-content:center}
+    .key{min-width:40px;padding:10px 8px;border-radius:6px;background:rgba(255,255,255,0.03);text-align:center;user-select:none;cursor:pointer}
+    .key.wide{min-width:64px}
+    .key.correct{background:var(--green);color:white}
+    .key.present{background:var(--yellow);color:black}
+    .key.absent{background:var(--gray);color:white}
+
+    .meta{display:flex;gap:16px;align-items:center}
+    .status{color:var(--muted);font-size:14px}
+    .points{background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:8px}
+
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+
+    @media (max-width:720px){
+      .row{grid-template-columns:repeat(6,44px)}
+      .cell{width:44px;height:44px;font-size:18px}
+      .key{min-width:32px;padding:8px}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Wordle Español — 6 letras</h1>
+        <div class="subtitle">6 intentos. Letras en mayúsculas. Edita cada casilla y verás la posición del cursor.</div>
+      </div>
+      <div class="meta">
+        <div class="points">Puntos: <span id="points">0</span></div>
+        <div class="status" id="cursorStatus">Cursor: fila 1, col 1</div>
+      </div>
+    </header>
+
+    <main>
+      <div id="board" class="board" aria-label="Tablero de Wordle de 6x6"></div>
+
+      <div class="controls">
+        <button id="resetBtn" class="btn">Resetear (reset puntos)</button>
+        <button id="nextBtn" class="ghost">Siguiente palabra / Saltar (-2 pts si quedan intentos)</button>
+        <div style="margin-left:auto;color:var(--muted)"><small>Intento: <span id="attempt">1</span>/6</small></div>
+      </div>
+
+      <div id="message" style="margin-top:10px;color:var(--muted)"></div>
+
+      <div class="keyboard" id="keyboard" aria-hidden="false"></div>
+
+      <footer>
+        <div>Controles: escribe para completar la casilla. Enter para enviar intento. Backspace para borrar. Haz click en el teclado para escribir también.</div>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    // --- Base de datos estática: 100 palabras en español de 6 caracteres ---
+    const WORDS = [
+"amigos","amigas","bancos","barcos","coches","perros","gatito","libros","puerta","puente",
+"jardin","fuerte","alegre","verano","martes","jueves","saludo","camino","musica","mirada",
+"correr","hablar","rapido","lentes","quesos","jugado","mundos","ventas","buscar","piedra",
+"madres","padres","reinas","salida","cocina","banano","tomate","pepino","mancha","cambio",
+"fiscal","ordena","origen","salmon","carita","amable","flores","cielos","camisa","cobija",
+"dinero","planta","bailar","pensar","crecer","llegar","enviar","ganado","abrigo","toalla",
+"cereal","ensayo","fiesta","juegos","jugada","remera","pueblo","suerte","sonido","radios",
+"pelota","golazo","jugoso","sabado","abuelo","abuela","poemas","cuento","mitico","ruinas",
+"paleta","paloma","balcon","anillo","corona","correo","novela","sombra","arenas","gallos",
+"museos","viento","lluvia","brillo","marino","marina","salado","dulces","verdes","platos",
+"camion","agenda","calmar"
+    ];
+
+    // Utility: choose random word
+    function pickRandomWord(prev){
+      let candidates = WORDS.slice();
+      if(prev){
+        candidates = candidates.filter(w=>w!==prev);
+      }
+      const idx = Math.floor(Math.random()*candidates.length);
+      return candidates[idx];
+    }
+
+    // DOM refs
+    const boardEl = document.getElementById('board');
+    const keyboardEl = document.getElementById('keyboard');
+    const pointsEl = document.getElementById('points');
+    const cursorStatusEl = document.getElementById('cursorStatus');
+    const attemptEl = document.getElementById('attempt');
+    const messageEl = document.getElementById('message');
+    const resetBtn = document.getElementById('resetBtn');
+    const nextBtn = document.getElementById('nextBtn');
+
+    // Game state
+    const ROWS = 6, COLS = 6;
+    let solution = '';
+    let currentRow = 0; // 0-based
+    let points = 0;
+    let gameState = 'playing'; // 'playing' | 'won' | 'lost'
+    let keyboardState = {}; // letter -> 'correct'|'present'|'absent'
+
+    // Build board
+    function createBoard(){
+      boardEl.innerHTML = '';
+      for(let r=0;r<ROWS;r++){
+        const row = document.createElement('div');
+        row.className='row';
+        row.dataset.row = r;
+        for(let c=0;c<COLS;c++){
+          const cell = document.createElement('div');
+          cell.className='cell';
+          cell.dataset.row = r;
+          cell.dataset.col = c;
+
+          const input = document.createElement('input');
+          input.setAttribute('maxlength','1');
+          input.autocomplete = 'off';
+          input.spellcheck = false;
+          input.dataset.row = r;
+          input.dataset.col = c;
+          input.value = '';
+
+          // handlers
+          input.addEventListener('input', onCellInput);
+          input.addEventListener('keydown', onCellKeyDown);
+          input.addEventListener('focus', ()=>setCursor(r,c));
+
+          cell.appendChild(input);
+          row.appendChild(cell);
+        }
+        boardEl.appendChild(row);
+      }
+    }
+
+    // Build keyboard
+    const KEY_ROWS = ["qwertyuiop","asdfghjklñ","zxcvbnm"];
+    function createKeyboard(){
+      keyboardEl.innerHTML = '';
+      KEY_ROWS.forEach((ks,idx)=>{
+        const krow = document.createElement('div');
+        krow.className='krow';
+        for(const ch of ks){
+          const key = document.createElement('div');
+          key.className='key';
+          key.textContent = ch.toUpperCase();
+          key.dataset.key = ch;
+          key.addEventListener('click', ()=>onScreenKey(ch));
+          krow.appendChild(key);
+        }
+        // add wide keys on last row
+        if(idx===2){
+          const enter = document.createElement('div'); enter.className='key wide'; enter.textContent='ENTER'; enter.addEventListener('click', ()=>submitRow());
+          const space = document.createElement('div'); space.className='key wide'; space.textContent='BORRAR'; space.addEventListener('click', ()=>onBackspace());
+          krow.insertBefore(enter,krow.firstChild);
+          krow.appendChild(space);
+        }
+        keyboardEl.appendChild(krow);
+      });
+    }
+
+    // Helpers to get input element
+    function getCellInput(r,c){
+      return boardEl.querySelector(`input[data-row='${r}'][data-col='${c}']`);
+    }
+    function setCursor(r,c){
+      // focus styling
+      boardEl.querySelectorAll('.cell').forEach(el=>el.classList.remove('focused'));
+      const cell = boardEl.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+      if(cell) cell.classList.add('focused');
+      cursorStatusEl.textContent = `Cursor: fila ${r+1}, col ${c+1}`;
+    }
+
+    // Input handler
+    function onCellInput(e){
+      const el = e.target;
+      let ch = el.value || '';
+      ch = ch.toLowerCase().replace(/[^a-zñ]/g,''); // allow ñ
+      if(ch.length>1) ch = ch.slice(-1);
+      el.value = ch.toUpperCase();
+
+      const r = Number(el.dataset.row), c = Number(el.dataset.col);
+      // move focus to next cell in row
+      if(ch && c<COLS-1){
+        const next = getCellInput(r,c+1);
+        if(next && !next.disabled){ next.focus(); }
+      }
+    }
+
+    function onCellKeyDown(e){
+      const el = e.target;
+      const r = Number(el.dataset.row), c = Number(el.dataset.col);
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        submitRow();
+        return;
+      }
+      if(e.key === 'Backspace'){
+        e.preventDefault();
+        if(el.value){ // clear
+          el.value='';
+        } else if(c>0){
+          const prev = getCellInput(r,c-1);
+          if(prev && !prev.disabled){ prev.focus(); prev.value=''; }
+        }
+        return;
+      }
+      // allow arrow navigation
+      if(e.key === 'ArrowRight' && c<COLS-1){ e.preventDefault(); getCellInput(r,c+1).focus(); return; }
+      if(e.key === 'ArrowLeft' && c>0){ e.preventDefault(); getCellInput(r,c-1).focus(); return; }
+      if(e.key === 'ArrowDown' && r<ROWS-1){ e.preventDefault(); getCellInput(r+1,c).focus(); return; }
+      if(e.key === 'ArrowUp' && r>0){ e.preventDefault(); getCellInput(r-1,c).focus(); return; }
+
+      // only allow typing letters: allow single character keys - ignore others
+      if(e.key.length===1 && /[a-zA-ZñÑ]/.test(e.key)){
+        // allow default and let input handler transform
+      } else if(e.key.length===1){
+        e.preventDefault();
+      }
+    }
+
+    // On-screen keyboard click
+    function onScreenKey(ch){
+      ch = ch.toLowerCase();
+      // find focused input
+      const focused = boardEl.querySelector('.cell.focused input');
+      if(focused){
+        focused.value = ch.toUpperCase();
+        focused.dispatchEvent(new Event('input'));
+      } else {
+        // else place in first empty cell of current row
+        for(let c=0;c<COLS;c++){
+          const input = getCellInput(currentRow,c);
+          if(!input.disabled && !input.value){ input.value = ch.toUpperCase(); input.dispatchEvent(new Event('input')); input.focus(); break; }
+        }
+      }
+    }
+
+    function onBackspace(){
+      const focused = boardEl.querySelector('.cell.focused input');
+      if(focused){ if(focused.value){ focused.value=''; } else { const r=Number(focused.dataset.row), c=Number(focused.dataset.col); if(c>0){ const prev=getCellInput(r,c-1); prev.focus(); prev.value=''; } } }
+    }
+
+    // Evaluate guess
+    function submitRow(){
+      if(gameState!=='playing') return;
+      // check current row fully filled
+      const guess = [];
+      for(let c=0;c<COLS;c++){
+        const val = getCellInput(currentRow,c).value || '';
+        if(val.length===0){ messageEl.textContent = 'Completa todas las letras antes de enviar.'; return; }
+        guess.push(val.toLowerCase());
+      }
+      const guessWord = guess.join('');
+      // evaluate
+      const result = evaluateGuess(guessWord, solution);
+      // apply classes and disable row
+      for(let c=0;c<COLS;c++){
+        const cellEl = boardEl.querySelector(`.cell[data-row='${currentRow}'][data-col='${c}']`);
+        const input = cellEl.querySelector('input');
+        input.disabled = true;
+        cellEl.classList.add(result[c]);
+      }
+      // update keyboard
+      updateKeyboard(result, guess);
+
+      // check win
+      if(result.every(r=>r==='correct')){
+        gameState='won';
+        const pts = Math.max(0, 7 - (currentRow+1));
+        points += pts;
+        pointsEl.textContent = points;
+        messageEl.textContent = `¡Ganaste! Palabra: ${solution.toUpperCase()} — Ganaste ${pts} punto(s). Presiona "Siguiente" para otra palabra.`;
+        return;
+      }
+
+      // advance
+      currentRow++;
+      attemptEl.textContent = currentRow+1;
+      if(currentRow>=ROWS){
+        // lost
+        gameState='lost';
+        messageEl.textContent = `Perdiste. La palabra era: ${solution.toUpperCase()}`;
+        // disable remaining inputs
+        for(let r=currentRow;r<ROWS;r++){
+          for(let c=0;c<COLS;c++){ const inp=getCellInput(r,c); inp.disabled=true; }
+        }
+        return;
+      }
+      // enable next row inputs and focus first cell
+      for(let c=0;c<COLS;c++){ const inp = getCellInput(currentRow,c); inp.disabled=false; inp.value=''; }
+      getCellInput(currentRow,0).focus();
+      messageEl.textContent='';
+    }
+
+    // Evaluate with Wordle logic (greens first, then yellows respecting counts)
+    function evaluateGuess(guess, target){
+      const res = Array(COLS).fill('absent');
+      const targetArr = target.split('');
+      const guessArr = guess.split('');
+
+      // mark corrects
+      for(let i=0;i<COLS;i++){
+        if(guessArr[i]===targetArr[i]){ res[i]='correct'; targetArr[i]=null; guessArr[i]=null; }
+      }
+      // mark presents
+      for(let i=0;i<COLS;i++){
+        if(guessArr[i]!=null){
+          const idx = targetArr.indexOf(guessArr[i]);
+          if(idx!==-1){ res[i]='present'; targetArr[idx]=null; }
+        }
+      }
+      return res;
+    }
+
+    function updateKeyboard(result, guessArr){
+      for(let i=0;i<COLS;i++){
+        const letter = guessArr[i].toLowerCase();
+        const prev = keyboardState[letter];
+        const status = result[i];
+        // precedence: correct > present > absent
+        if(prev==='correct') continue;
+        if(prev==='present' && status==='absent') continue;
+        keyboardState[letter] = status;
+      }
+      // apply to DOM
+      keyboardEl.querySelectorAll('.key').forEach(k=>{
+        const ch = k.dataset.key;
+        const state = keyboardState[ch];
+        k.classList.remove('correct','present','absent');
+        if(state) k.classList.add(state);
+      });
+    }
+
+    // New game / word
+    function startNewWord(prev){
+      solution = pickRandomWord(prev);
+      console.log('Nueva palabra (debug):', solution);
+      // reset board
+      currentRow = 0; attemptEl.textContent = 1;
+      gameState = 'playing';
+      messageEl.textContent = '';
+      // clear board and enable first row
+      boardEl.querySelectorAll('.cell').forEach(cell=>{
+        cell.classList.remove('correct','present','absent','focused');
+        const input = cell.querySelector('input');
+        input.disabled = true; input.value='';
+      });
+      for(let c=0;c<COLS;c++){ const inp = getCellInput(0,c); inp.disabled=false; }
+      getCellInput(0,0).focus(); setCursor(0,0);
+      // reset keyboard states (do not reset overall points)
+      keyboardState = {};
+      keyboardEl.querySelectorAll('.key').forEach(k=>k.classList.remove('correct','present','absent'));
+    }
+
+    // Reset everything including points
+    function resetAll(){
+      points = 0; pointsEl.textContent = points;
+      startNewWord();
+    }
+
+    // Next/Skip button behaviour
+    function nextWord(){
+      if(gameState==='won'){
+        startNewWord(solution);
+      } else if(currentRow<ROWS){
+        // attempts remain -> penalty
+        points = Math.max(0, points - 2);
+        pointsEl.textContent = points;
+        startNewWord(solution);
+      } else {
+        // no attempts remain (lost) -> just new word
+        startNewWord(solution);
+      }
+    }
+
+    // Init
+    function init(){
+      createBoard();
+      createKeyboard();
+      // disable all inputs except first row
+      for(let r=0;r<ROWS;r++){ for(let c=0;c<COLS;c++){ const inp=getCellInput(r,c); inp.disabled = true; } }
+      for(let c=0;c<COLS;c++) getCellInput(0,c).disabled=false;
+      getCellInput(0,0).focus(); setCursor(0,0);
+      // listeners
+      resetBtn.addEventListener('click', ()=>{ if(confirm('Resetear todo, incluyendo contador de puntos?')) resetAll(); });
+      nextBtn.addEventListener('click', ()=>{ nextWord(); });
+
+      // global keyboard (physical)
+      window.addEventListener('keydown', (e)=>{
+        // handle letter keys when a cell is focused
+        if(e.key.length===1 && /[a-zA-ZñÑ]/.test(e.key)){
+          const focused = document.activeElement;
+          if(focused && focused.tagName==='INPUT') return; // let input handle
+          // place letter in first empty cell of current row
+          for(let c=0;c<COLS;c++){
+            const inp = getCellInput(currentRow,c);
+            if(!inp.disabled && !inp.value){ inp.value = e.key.toUpperCase(); inp.dispatchEvent(new Event('input')); inp.focus(); break; }
+          }
+        }
+        if(e.key==='Enter'){
+          submitRow();
+        }
+        if(e.key==='Backspace'){
+          const focused = document.activeElement;
+          if(focused && focused.tagName==='INPUT') return; // let input handle
+          onBackspace();
+        }
+      });
+
+      // track focus changes to update cursor status
+      boardEl.addEventListener('focusin',(ev)=>{
+        const el = ev.target;
+        if(el.tagName==='INPUT') setCursor(Number(el.dataset.row), Number(el.dataset.col));
+      });
+
+      // start
+      startNewWord(null);
+    }
+
+    // expose evaluateGuess for debugging
+    window.evaluateGuess = evaluateGuess;
+
+    init();
+  </script>
+</body>
+</html>
